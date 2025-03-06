@@ -15,10 +15,10 @@ const userSchema = new mongoose.Schema(
             required: true,
             unique: true
         },
-        phone: { 
+        phone: {
             type: String,
-             unique: true, 
-             sparse: true 
+            unique: true,
+            sparse: true
         },
         password: {
             type: String,
@@ -32,11 +32,19 @@ const userSchema = new mongoose.Schema(
             ],
             default: "user"
         },
-        otp: {
+        verifyOtp: {
             type: String
         },
-        otpExpires: { type: Date },
+        verifyOtpExpires: { type: Number },
         isVerified: { type: Boolean, default: false },
+        resetOtp: {
+            type: String ,
+            default: ''
+        },
+        resetOtpExpires: {
+            type: String,
+            default: 0
+        }
     },
     {
         timestamps: true
