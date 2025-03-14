@@ -24,7 +24,6 @@ router.post(
         try {
             const { firstName, lastName, email, password } = req.body;
 
-            // Delete unverified user with the same email
             await User.deleteOne({ email, isVerified: false });
 
             let user = await User.findOne({ email });
@@ -36,10 +35,10 @@ router.post(
 
             const otp = generateOtp();
             user.verifyOtp = otp;
-            user.verifyOtpExpires = Date.now() + 1 * 60 * 1000;
+            user.verifyOtpExpires = Date.now() + 1 * 60 * 1000; 
             await user.save();
 
-            await sendOtpEmail(email, otp);
+            await sendOtpEmail(email, otp, "register");
 
             res.status(201).json({ message: "User registered! Verify your email with OTP." });
         } catch (error) {
@@ -67,7 +66,33 @@ router.post("/verify-otp", async (req, res) => {
     res.json({ message: "Email verified successfully!" });
 });
 
-// Login Route
+// Resend OTP
+router.post("/resend-otp", async (req, res) => {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "Invalid email" });
+
+    if (user.isVerified) {
+        return res.status(400).json({ message: "Email already verified" });
+    }
+
+    const currentTime = Date.now();
+    if (user.verifyOtpExpires && currentTime - user.verifyOtpExpires < 60 * 1000) {
+        return res.status(400).json({ message: "Please wait for 1 minute before requesting OTP again" });
+    }
+
+    const otp = generateOtp();
+    user.verifyOtp = otp;
+    user.verifyOtpExpires = Date.now() + 1 * 60 * 1000;
+    await user.save();
+
+    await sendOtpEmail(email, otp);
+
+    res.json({ message: "OTP Resent Successfully!" });
+});
+
+// Login
 router.post("/login", [
     body("email").isEmail(),
     body("password").notEmpty()
@@ -87,6 +112,42 @@ router.post("/login", [
     res.json({ message: "Login successful", token });
 });
 
+// Password Reset API
+router.post("/forgot-password", async (req, res) => {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "Invalid email" });
+
+    const otp = generateOtp();
+    user.resetOtp = otp;
+    user.resetOtpExpires = Date.now() + 5 * 60 * 1000; // 5 mins expiry
+    await user.save();
+
+    await sendOtpEmail(email, otp, "reset");
+
+    res.json({ message: "Password reset OTP sent to your email!" });
+});
+
+router.post("/reset-password", async (req, res) => {
+    const { email, otp, newPassword } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "Invalid email" });
+
+    if (user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
+        return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    user.password = newPassword;
+    user.resetOtp = null;
+    user.resetOtpExpires = null;
+    await user.save();
+
+    res.json({ message: "Password reset successful!" });
+});
+
+// Profile Route (Secure Route)
 router.get("/profile", authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id).select("-password");
     res.json(user);
