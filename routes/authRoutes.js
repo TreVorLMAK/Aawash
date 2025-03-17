@@ -5,10 +5,10 @@ const { body, validationResult } = require("express-validator");
 const User = require("../models/userModel");
 const { generateOtp, sendOtpEmail } = require("../utils/otpService");
 const authMiddleware = require("../middleware/authMiddleware");
+const upload = require("../middleware/multer");
 
 const router = express.Router();
 
-// Register Route
 router.post(
     "/register",
     [
@@ -29,13 +29,12 @@ router.post(
             let user = await User.findOne({ email });
             if (user) return res.status(400).json({ message: "Email already exists" });
 
-            user = new User({ firstName, lastName, email, password });
-
-            await user.save();
+            const hashedPassword = await bcrypt.hash(password, 10);
+            user = new User({ firstName, lastName, email, password: hashedPassword });
 
             const otp = generateOtp();
             user.verifyOtp = otp;
-            user.verifyOtpExpires = Date.now() + 1 * 60 * 1000; 
+            user.verifyOtpExpires = Date.now() + 60 * 1000;
             await user.save();
 
             await sendOtpEmail(email, otp, "register");
@@ -47,7 +46,6 @@ router.post(
     }
 );
 
-// Verify OTP
 router.post("/verify-otp", async (req, res) => {
     const { email, otp } = req.body;
 
@@ -66,7 +64,6 @@ router.post("/verify-otp", async (req, res) => {
     res.json({ message: "Email verified successfully!" });
 });
 
-// Resend OTP
 router.post("/resend-otp", async (req, res) => {
     const { email } = req.body;
 
@@ -77,14 +74,13 @@ router.post("/resend-otp", async (req, res) => {
         return res.status(400).json({ message: "Email already verified" });
     }
 
-    const currentTime = Date.now();
-    if (user.verifyOtpExpires && currentTime - user.verifyOtpExpires < 60 * 1000) {
+    if (user.verifyOtpExpires && Date.now() - user.verifyOtpExpires < 60 * 1000) {
         return res.status(400).json({ message: "Please wait for 1 minute before requesting OTP again" });
     }
 
     const otp = generateOtp();
     user.verifyOtp = otp;
-    user.verifyOtpExpires = Date.now() + 1 * 60 * 1000;
+    user.verifyOtpExpires = Date.now() + 60 * 1000;
     await user.save();
 
     await sendOtpEmail(email, otp);
@@ -92,7 +88,6 @@ router.post("/resend-otp", async (req, res) => {
     res.json({ message: "OTP Resent Successfully!" });
 });
 
-// Login
 router.post("/login", [
     body("email").isEmail(),
     body("password").notEmpty()
@@ -108,11 +103,10 @@ router.post("/login", [
     if (!user.isVerified) return res.status(400).json({ message: "Verify your email first" });
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES });
-    
+
     res.json({ message: "Login successful", token });
 });
 
-// Password Reset API
 router.post("/forgot-password", async (req, res) => {
     const { email } = req.body;
 
@@ -121,7 +115,7 @@ router.post("/forgot-password", async (req, res) => {
 
     const otp = generateOtp();
     user.resetOtp = otp;
-    user.resetOtpExpires = Date.now() + 5 * 60 * 1000; // 5 mins expiry
+    user.resetOtpExpires = Date.now() + 5 * 60 * 1000;
     await user.save();
 
     await sendOtpEmail(email, otp, "reset");
@@ -139,7 +133,7 @@ router.post("/reset-password", async (req, res) => {
         return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
-    user.password = newPassword;
+    user.password = await bcrypt.hash(newPassword, 10);
     user.resetOtp = null;
     user.resetOtpExpires = null;
     await user.save();
@@ -147,10 +141,19 @@ router.post("/reset-password", async (req, res) => {
     res.json({ message: "Password reset successful!" });
 });
 
-// Profile Route (Secure Route)
 router.get("/profile", authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id).select("-password");
     res.json(user);
+});
+
+router.post("/upload-profile", authMiddleware, upload.single('profilePicture'), async (req, res) => {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.profilePicture = req.file.path;
+    await user.save();
+
+    res.json({ message: "Profile picture uploaded successfully", imageUrl: req.file.path });
 });
 
 module.exports = router;
