@@ -6,15 +6,19 @@ const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const landlordRoutes = require('./routes/landlordRoutes');
 const tenantRoutes = require('./routes/tenantRoutes');
+const setupSocket = require("./socket");
+const chatRoutes = require("./routes/chatRoutes");
 
 dotenv.config();
 connectDB();
 
+const server = http.createServer(app);
 const app = express();
 
 // Middleware setup
 app.use(express.json());
 app.use(cors());
+setupSocket(server);
 
 // Routes
 app.get('/', (req, res) => {
@@ -27,6 +31,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/landlord", landlordRoutes);
 app.use("/api/tenant", tenantRoutes);
+app.use("/api/messages", chatRoutes);
 
 app.listen(process.env.PORT, () => {
     console.log(`Server is running on port ${process.env.PORT}`);
