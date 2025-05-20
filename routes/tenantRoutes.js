@@ -2,6 +2,7 @@ const express = require("express");
 const authMiddleware = require("../middleware/authMiddleware");
 const authRoleMiddleware = require("../middleware/authRoleMiddleware");
 const Room = require("../models/roomModel");
+const Booking = require("../models/bookingModel");
 
 const router = express.Router();
 

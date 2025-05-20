@@ -28,10 +28,8 @@ const userSchema = new mongoose.Schema(
         profilePicture: { type: String, default: null },
         role: {
             type: String,
-            enum: [
-                "user", "owner", "admin"
-            ],
-            default: "user"
+            enum: ["tenant", "landlord", "admin"],
+            default: "tenant"
         },
         verifyOtp: {
             type: String

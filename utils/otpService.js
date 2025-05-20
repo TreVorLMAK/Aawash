@@ -1,6 +1,8 @@
 const nodemailer = require("nodemailer");
 
 const sendOtpEmail = async (email, otp, type) => {
+    //testing ko laagi
+    console.log(`Generated OTP for ${type} (${email}): ${otp}`);
     const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
