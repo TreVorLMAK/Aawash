@@ -47,5 +47,22 @@ router.post(
     }
   );
   
+  router.get("/bookings", authMiddleware, authRoleMiddleware(["landlord"]), async (req, res) => {
+    try {
+      const rooms = await Room.find({ owner: req.user.id }).select("_id");
+      const roomIds = rooms.map(room => room._id);
+  
+      const bookings = await Booking.find({ room: { $in: roomIds } })
+        .populate("room", "title price location")
+        .populate("tenant", "firstName lastName email")
+        .sort({ createdAt: -1 });
+  
+      res.json({ bookings });
+    } catch (error) {
+      console.error("Error fetching landlord bookings:", error);
+      res.status(500).json({ message: "Error fetching bookings", error });
+    }
+  });
+  
 
 module.exports = router;
