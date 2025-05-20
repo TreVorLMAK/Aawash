@@ -6,9 +6,19 @@ const Booking = require("../models/bookingModel");
 
 const router = express.Router();
 
-router.get("/my-bookings", authMiddleware, authRoleMiddleware(["tenant"]), (req, res) => {
-    res.json({ message: "Here are your bookings!" });
-});
+router.get("/my-bookings", authMiddleware, authRoleMiddleware(["tenant"]), async (req, res) => {
+    try {
+      const bookings = await Booking.find({ tenant: req.user.id })
+        .populate("room", "title price location images")
+        .sort({ createdAt: -1 }); // latest bookings first
+  
+      res.json({ bookings });
+    } catch (error) {
+      console.error("Error fetching bookings:", error);
+      res.status(500).json({ message: "Error fetching bookings", error });
+    }
+  });
+  
 
 router.post("/book-room/:roomId", authMiddleware, authRoleMiddleware(["tenant"]), async (req, res) => {
     try {
@@ -21,7 +31,6 @@ router.post("/book-room/:roomId", authMiddleware, authRoleMiddleware(["tenant"])
         return res.status(404).json({ message: "Room not found or unavailable" });
       }
   
-      // Optional: Prevent overlapping bookings
       const existingBooking = await Booking.findOne({
         room: roomId,
         $or: [
