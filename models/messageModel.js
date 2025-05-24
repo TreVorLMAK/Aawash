@@ -5,6 +5,13 @@ const messageSchema = new mongoose.Schema({
   receiverId: { type: String, required: true },
   message: { type: String, required: true },
   timestamp: { type: Date, default: Date.now },
+  status: {
+    type: String,
+    enum: ["Sent", "Delivered", "Read"],
+    default: "Sent"
+  },
+  deliveredAt: Date,
+  readAt: Date
 });
 
 const Message = mongoose.model("Message", messageSchema);

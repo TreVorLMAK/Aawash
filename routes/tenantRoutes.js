@@ -78,4 +78,39 @@ router.get("/filter-rooms", authMiddleware, authRoleMiddleware(["tenant"]), asyn
     res.json(rooms);
 });
 
+router.patch("/bookings/:bookingId/cancel", authMiddleware, authRoleMiddleware(["tenant"]), async (req, res) => {
+    try {
+      const { bookingId } = req.params;
+  
+      const booking = await Booking.findById(bookingId);
+  
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+  
+      if (booking.tenant.toString() !== req.user.id) {
+        return res.status(403).json({ message: "You can only cancel your own bookings" });
+      }
+
+      if (booking.status !== "Pending") {
+        return res.status(400).json({ message: "Only pending bookings can be cancelled" });
+      }
+  
+      booking.status = "Cancelled";
+      await booking.save();
+
+      if (booking.status === "Confirmed") {
+        const room = await Room.findById(booking.room);
+        room.isAvailable = true;
+        await room.save();
+      }
+  
+      res.json({ message: "Booking cancelled successfully", booking });
+    } catch (error) {
+      console.error("Cancel booking error:", error);
+      res.status(500).json({ message: "Error cancelling booking", error });
+    }
+  });
+  
+
 module.exports = router;
