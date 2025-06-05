@@ -1,45 +1,50 @@
 const mongoose = require("mongoose");
 
 const roomSchema = new mongoose.Schema({
-    owner: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true
+  },
+  title: {
+    type: String,
+    required: true
+  },
+  description: {
+    type: String
+  },
+  price: {
+    type: Number,
+    required: true
+  },
+  category: {
+    type: String,
+    enum: ["room", "flat", "house"],
+    required: true
+  },
+  location: {
+    type: {
+      type: String,
+      enum: ["Point"],
+      default: "Point"
     },
-    title: {
-        type: String,
-        required: true
-    },
-    description: {
-        type: String
-    },
-    price: {
-        type: Number,
-        required: true
-    },
-    location: {
-        type: {
-            type: String,
-            enum: ["Point"],
-            default: "Point"
-        },
-        coordinates: {
-            type: [Number],
-            required: true
-        }
-    },
-    amenities: {
-        type: [String]
-    },
-    images: {
-        type: [String]
-    },
-    isAvailable: {
-        type: Boolean,
-        default: true
+    coordinates: {
+      type: [Number],
+      required: true
     }
+  },
+  amenities: {
+    type: [String]
+  },
+  images: {
+    type: [String]
+  },
+  isAvailable: {
+    type: Boolean,
+    default: true
+  }
 }, {
-    timestamps: true
+  timestamps: true
 });
 
 roomSchema.index({ location: "2dsphere" });

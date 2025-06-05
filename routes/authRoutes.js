@@ -12,49 +12,50 @@ const router = express.Router();
 router.post(
     "/register",
     [
-        body("firstName").notEmpty(),
-        body("lastName").notEmpty(),
-        body("email").isEmail(),
-        body("password").isLength({ min: 6 }),
-        body("role").isIn(["tenant", "landlord"]).withMessage("Role must be either tenant or landlord")
+      body("firstName").notEmpty(),
+      body("lastName").notEmpty(),
+      body("email").isEmail(),
+      body("password").isLength({ min: 6 }),
+      body("role").isIn(["tenant", "landlord"]).withMessage("Role must be either tenant or landlord")
     ],
     async (req, res) => {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
-
-        try {
-            const { firstName, lastName, email, password, role } = req.body;
-
-            await User.deleteOne({ email, isVerified: false });
-
-            let user = await User.findOne({ email });
-            if (user) return res.status(400).json({ message: "Email already exists" });
-
-
-            user = new User({
-                firstName,
-                lastName,
-                email,
-                password,
-                role
-            });
-
-            const otp = generateOtp();
-            user.verifyOtp = otp;
-            user.verifyOtpExpires = Date.now() + 60 * 1000;
-            await user.save();
-
-            await sendOtpEmail(email, otp, "register");
-
-            res.status(201).json({ message: "User registered! Verify your email with OTP." });
-        } catch (error) {
-            console.error("Registration Error:", error);
-            res.status(500).json({ message: "Error registering user", error });
-        }
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+  
+      try {
+        const { firstName, lastName, email, password, role } = req.body;
+  
+        await User.deleteOne({ email, isVerified: false });
+  
+        let user = await User.findOne({ email });
+        if (user) return res.status(400).json({ message: "Email already exists" });
+  
+        const hashedPassword = await bcrypt.hash(password, 10);
+  
+        user = new User({
+          firstName,
+          lastName,
+          email,
+          password: hashedPassword,
+          role
+        });
+  
+        const otp = generateOtp();
+        user.verifyOtp = otp;
+        user.verifyOtpExpires = Date.now() + 60 * 1000;
+        await user.save();
+  
+        await sendOtpEmail(email, otp, "register");
+  
+        res.status(201).json({ message: "User registered! Verify your email with OTP." });
+      } catch (error) {
+        console.error("Registration Error:", error);
+        res.status(500).json({ message: "Error registering user", error });
+      }
     }
-);
+  );
 
 router.post("/verify-otp", async (req, res) => {
     const { email, otp } = req.body;
@@ -170,4 +171,50 @@ router.post("/upload-profile", authMiddleware, upload.single('profilePicture'), 
     res.json({ message: "Profile picture uploaded successfully", imageUrl: req.file.path });
 });
 
+router.put("/switch-role", authMiddleware, async (req, res) => {
+  const { role } = req.body;
+
+  if (!["tenant", "landlord"].includes(role)) {
+    return res.status(400).json({ message: "Invalid role" });
+  }
+
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.role = role;
+    await user.save();
+
+    res.json({ message: `Role switched to ${role}` });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
+router.put(
+  "/update-profile",
+  authMiddleware,
+  upload.single("profilePicture"),
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.user.id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const { firstName, lastName } = req.body;
+
+      if (firstName) user.firstName = firstName;
+      if (lastName) user.lastName = lastName;
+
+      if (req.file && req.file.path) {
+        user.profilePicture = req.file.path; // cloudinary URL
+      }
+
+      await user.save();
+      res.json({ message: "Profile updated successfully!" });
+    } catch (err) {
+      console.error("Update profile error:", err);
+      res.status(500).json({ message: "Failed to update profile", error: err.message });
+    }
+  }
+);
 module.exports = router;

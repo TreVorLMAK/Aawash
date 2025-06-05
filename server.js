@@ -9,6 +9,10 @@ const landlordRoutes = require('./routes/landlordRoutes');
 const tenantRoutes = require('./routes/tenantRoutes');
 const setupSocket = require("./socket");
 const chatRoutes = require("./routes/chatRoutes");
+const publicRoutes = require('./routes/publicRoutes');
+const mapRoutes = require("./routes/mapRoutes");
+
+
 
 dotenv.config();
 connectDB();
@@ -19,7 +23,7 @@ const server = http.createServer(app);
 
 // Middleware setup
 app.use(express.json());
-app.use(cors());
+app.use(cors({ origin: "http://localhost:3000", credentials: true }));
 setupSocket(server);
 
 // Routes
@@ -29,9 +33,11 @@ app.get('/', (req, res) => {
 
 // Authentication routes
 app.use("/api/auth", authRoutes);
+app.use("/api", mapRoutes);
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/landlord", landlordRoutes);
+app.use("/api", publicRoutes);
 app.use("/api/tenant", tenantRoutes);
 app.use("/api/messages", chatRoutes);
 
