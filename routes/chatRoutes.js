@@ -1,5 +1,7 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const Message = require("../models/messageModel");
+const User = require("../models/userModel");
 const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
@@ -10,8 +12,8 @@ router.get("/:user1/:user2", async (req, res) => {
     const messages = await Message.find({
       $or: [
         { senderId: user1, receiverId: user2 },
-        { senderId: user2, receiverId: user1 }
-      ]
+        { senderId: user2, receiverId: user1 },
+      ],
     }).sort("timestamp");
 
     res.json(messages);
@@ -24,7 +26,7 @@ router.get("/unread", authMiddleware, async (req, res) => {
   try {
     const messages = await Message.find({
       receiverId: req.user.id,
-      status: { $in: ["Sent", "Delivered"] }
+      status: { $in: ["Sent", "Delivered"] },
     }).sort({ timestamp: -1 });
 
     res.json({ messages });
@@ -54,7 +56,7 @@ router.get("/unread/count", authMiddleware, async (req, res) => {
   try {
     const count = await Message.countDocuments({
       receiverId: req.user.id,
-      status: { $in: ["Sent", "Delivered"] }
+      status: { $in: ["Sent", "Delivered"] },
     });
 
     res.json({ count });
@@ -72,29 +74,25 @@ router.get("/recent/:userId", async (req, res) => {
         $match: {
           $or: [
             { senderId: userId },
-            { receiverId: userId }
-          ]
-        }
+            { receiverId: userId },
+          ],
+        },
       },
-      {
-        $sort: { timestamp: -1 }
-      },
+      { $sort: { timestamp: -1 } },
       {
         $group: {
           _id: {
             $cond: [
               { $eq: ["$senderId", userId] },
               "$receiverId",
-              "$senderId"
-            ]
+              "$senderId",
+            ],
           },
           lastMessage: { $first: "$message" },
-          lastTime: { $first: "$timestamp" }
-        }
+          lastTime: { $first: "$timestamp" },
+        },
       },
-      {
-        $sort: { lastTime: -1 }
-      }
+      { $sort: { lastTime: -1 } },
     ]);
 
     res.json({ conversations: recent });
@@ -105,24 +103,52 @@ router.get("/recent/:userId", async (req, res) => {
 
 router.get("/conversations/:userId", async (req, res) => {
   try {
-    const { userId } = req.params;
-    const messages = await Message.find({
-      $or: [{ senderId: userId }, { receiverId: userId }],
-    });
+    const userId = req.params.userId;
 
-    const userIds = new Set();
-    messages.forEach((msg) => {
-      if (msg.senderId !== userId) userIds.add(msg.senderId);
-      if (msg.receiverId !== userId) userIds.add(msg.receiverId);
-    });
+    const recent = await Message.aggregate([
+      {
+        $match: {
+          $or: [
+            { senderId: userId },
+            { receiverId: userId },
+          ],
+        },
+      },
+      { $sort: { timestamp: -1 } },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $eq: ["$senderId", userId] },
+              "$receiverId",
+              "$senderId",
+            ],
+          },
+          lastMessage: { $first: "$message" },
+          lastTime: { $first: "$timestamp" },
+        },
+      },
+      { $sort: { lastTime: -1 } },
+    ]);
 
-    const users = await User.find({ _id: { $in: Array.from(userIds) } }).select(
+    const userIds = recent.map(r => r._id);
+    const users = await User.find({ _id: { $in: userIds } }).select(
       "_id firstName lastName email profilePicture"
     );
 
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to load conversations", error: err.message });
+    const conversations = recent.map(item => {
+      const user = users.find(u => u._id.toString() === item._id.toString());
+      return user ? {
+        ...user._doc,
+        lastMessage: item.lastMessage,
+        lastTime: item.lastTime
+      } : null;
+    }).filter(Boolean);
+
+    res.json(conversations);
+  } catch (error) {
+    console.error("Error fetching conversations:", error);
+    res.status(500).json({ message: "Failed to fetch conversations", error });
   }
 });
 
