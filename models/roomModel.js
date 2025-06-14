@@ -10,9 +10,7 @@ const roomSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  description: {
-    type: String
-  },
+  description: String,
   price: {
     type: Number,
     required: true
@@ -33,12 +31,15 @@ const roomSchema = new mongoose.Schema({
       required: true
     }
   },
-  amenities: {
-    type: [String]
+  locationName: {
+    type: String,
+    required: true
   },
-  images: {
-    type: [String]
+  address: {
+    type: String
   },
+  amenities: [String],
+  images: [String],
   isAvailable: {
     type: Boolean,
     default: true

@@ -19,17 +19,32 @@ router.get("/my-rooms", authMiddleware, authRoleMiddleware(["landlord"]), async 
 });
 
 // Add a new room
-router.post("/add-room", authMiddleware, authRoleMiddleware(["landlord"]), upload.array("images", 5), async (req, res) => {
+router.post(
+  "/add-room",
+  authMiddleware,
+  authRoleMiddleware(["landlord"]),
+  upload.array("images", 5),
+  async (req, res) => {
     try {
-      const { title, description, price, location, category, amenities, locationName } = req.body;
-  
-      if (!title || !price || !location) {
-        return res.status(400).json({ message: "Title, price, and location are required." });
+      const {
+        title,
+        description,
+        price,
+        location,
+        category,
+        amenities,
+        locationName,
+      } = req.body;
+
+      if (!title || !price || !location || !locationName || !category) {
+        return res.status(400).json({
+          message: "Title, price, location, category and locationName are required.",
+        });
       }
-  
+
       const parsedLocation = JSON.parse(location);
-      const imageUrls = req.files.map(file => file.path);
-  
+      const imageUrls = req.files.map((file) => file.path);
+
       const newRoom = new Room({
         owner: req.user.id,
         title,
@@ -41,14 +56,22 @@ router.post("/add-room", authMiddleware, authRoleMiddleware(["landlord"]), uploa
         amenities: Array.isArray(amenities) ? amenities : [amenities],
         images: imageUrls,
       });
-  
+
       await newRoom.save();
-      res.status(201).json({ message: "Room added successfully!", room: newRoom });
+
+      res.status(201).json({
+        message: "Room added successfully!",
+        room: newRoom,
+      });
     } catch (error) {
       console.error("Error adding room:", error);
-      res.status(500).json({ message: "Room validation or upload failed", error });
+      res.status(500).json({
+        message: "Room validation or upload failed",
+        error: error.message,
+      });
     }
-  });
+  }
+);
 
 // View bookings made on landlord’s rooms
 router.get("/bookings", authMiddleware, authRoleMiddleware(["landlord"]), async (req, res) => {
@@ -96,6 +119,67 @@ router.patch("/bookings/:bookingId", authMiddleware, authRoleMiddleware(["landlo
     res.json({ message: `Booking ${status.toLowerCase()} successfully`, booking });
   } catch (error) {
     res.status(500).json({ message: "Error updating booking", error });
+  }
+});
+
+router.delete("/delete-room/:id", authMiddleware, authRoleMiddleware(["landlord"]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const room = await Room.findOne({ _id: id, owner: req.user.id });
+    if (!room) {
+      return res.status(404).json({ message: "Room not found or unauthorized" });
+    }
+
+    await room.deleteOne();
+    res.json({ message: "Room deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting room", error });
+  }
+});
+
+router.patch("/bookings/:bookingId/confirm", authMiddleware, authRoleMiddleware(["landlord"]), async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const booking = await Booking.findById(bookingId).populate("room");
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    const room = booking.room;
+
+    // Ensure the room belongs to the landlord
+    if (room.owner.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Unauthorized: Not your room" });
+    }
+
+    // Prevent confirming if already confirmed
+    if (booking.status === "Confirmed") {
+      return res.status(400).json({ message: "Booking is already confirmed" });
+    }
+
+    // Set all other bookings for the same room to Rejected
+    await Booking.updateMany(
+      {
+        room: room._id,
+        _id: { $ne: booking._id },
+        status: "Applied"
+      },
+      { $set: { status: "Rejected" } }
+    );
+
+    // Confirm this booking
+    booking.status = "Confirmed";
+    await booking.save();
+
+    // Mark room unavailable
+    room.isAvailable = false;
+    await room.save();
+
+    res.json({ message: "Booking confirmed!", booking });
+  } catch (error) {
+    console.error("Confirm booking error:", error);
+    res.status(500).json({ message: "Error confirming booking", error });
   }
 });
 

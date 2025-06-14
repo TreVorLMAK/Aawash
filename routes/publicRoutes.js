@@ -14,8 +14,8 @@ router.get("/public-rooms", async (req, res) => {
     }
 
     if (location) {
-        query["locationName"] = { $regex: location, $options: "i" };
-      }
+      query.locationName = { $regex: location, $options: "i" };
+    }
 
     if (amenities) {
       const amenityArray = amenities.split(",");
@@ -23,10 +23,12 @@ router.get("/public-rooms", async (req, res) => {
     }
 
     if (category) {
-        query.category = category;
-      }      
+      query.category = category;
+    }
 
-    const rooms = await Room.find(query).populate("owner", "firstName email");
+    const rooms = await Room.find(query)
+    .select("title price images location locationName category amenities address createdAt isAvailable fullAddress")
+      .populate("owner", "_id firstName email"); 
 
     res.json({ rooms });
   } catch (err) {
@@ -37,8 +39,13 @@ router.get("/public-rooms", async (req, res) => {
 
 router.get("/public-rooms/:id", async (req, res) => {
   try {
-    const room = await Room.findById(req.params.id).populate("owner", "firstName email");
-    if (!room || !room.isAvailable) return res.status(404).json({ message: "Room not found" });
+    const room = await Room.findById(req.params.id)
+      .populate("owner", "_id firstName email");
+
+    if (!room || !room.isAvailable) {
+      return res.status(404).json({ message: "Room not found" });
+    }
+
     res.json({ room });
   } catch (err) {
     res.status(500).json({ message: "Error fetching room", error: err.message });

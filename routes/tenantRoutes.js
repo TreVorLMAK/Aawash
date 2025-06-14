@@ -71,33 +71,40 @@ router.patch("/bookings/:bookingId/cancel", authMiddleware, authRoleMiddleware([
   }
 });
 
-// Public room listing for tenants (supports filtering)
-router.get("/public-rooms", async (req, res) => {
+router.post("/apply-booking/:roomId", authMiddleware, authRoleMiddleware(["tenant"]), async (req, res) => {
   try {
-    const { minPrice, maxPrice, location, amenities } = req.query;
-    const query = { isAvailable: true };
+    const { roomId } = req.params;
 
-    if (minPrice || maxPrice) {
-      query.price = {};
-      if (minPrice) query.price.$gte = parseInt(minPrice);
-      if (maxPrice) query.price.$lte = parseInt(maxPrice);
+    
+    const room = await Room.findById(roomId);
+    if (!room || !room.isAvailable) {
+      return res.status(404).json({ message: "Room not available" });
     }
 
-    if (location) {
-      query["title"] = { $regex: location, $options: "i" };
+    
+    const existing = await Booking.findOne({
+      tenant: req.user.id,
+      room: roomId,
+      status: { $in: ["Applied", "Confirmed"] }
+    });
+
+    if (existing) {
+      return res.status(400).json({ message: "You have already applied for this room." });
     }
 
-    if (amenities) {
-      const a = amenities.split(",");
-      query.amenities = { $all: a };
-    }
+    
+    const booking = new Booking({
+      tenant: req.user.id,
+      room: roomId,
+      status: "Applied"
+    });
 
-    const rooms = await Room.find(query).populate("owner", "firstName email");
-    res.json({ rooms });
-  } catch (err) {
-    console.error("Filter error:", err);
-    res.status(500).json({ message: "Failed to filter rooms", error: err.message });
+    await booking.save();
+
+    res.status(201).json({ message: "Booking request sent!", booking });
+  } catch (error) {
+    console.error("Apply booking error:", error);
+    res.status(500).json({ message: "Error applying for booking", error });
   }
 });
-
 module.exports = router;
