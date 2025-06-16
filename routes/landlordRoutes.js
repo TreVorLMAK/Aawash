@@ -91,37 +91,6 @@ router.get("/bookings", authMiddleware, authRoleMiddleware(["landlord"]), async 
   }
 });
 
-// Update booking status
-router.patch("/bookings/:bookingId", authMiddleware, authRoleMiddleware(["landlord"]), async (req, res) => {
-  try {
-    const { bookingId } = req.params;
-    const { status } = req.body;
-
-    if (!["Confirmed", "Cancelled"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status" });
-    }
-
-    const booking = await Booking.findById(bookingId).populate("room");
-    if (!booking || booking.room.owner.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    booking.status = status;
-    await booking.save();
-
-    if (status === "Cancelled") {
-      booking.room.isAvailable = true;
-    } else {
-      booking.room.isAvailable = false;
-    }
-    await booking.room.save();
-
-    res.json({ message: `Booking ${status.toLowerCase()} successfully`, booking });
-  } catch (error) {
-    res.status(500).json({ message: "Error updating booking", error });
-  }
-});
-
 router.delete("/delete-room/:id", authMiddleware, authRoleMiddleware(["landlord"]), async (req, res) => {
   try {
     const { id } = req.params;
@@ -137,50 +106,35 @@ router.delete("/delete-room/:id", authMiddleware, authRoleMiddleware(["landlord"
   }
 });
 
-router.patch("/bookings/:bookingId/confirm", authMiddleware, authRoleMiddleware(["landlord"]), async (req, res) => {
-  try {
-    const { bookingId } = req.params;
+router.patch(
+  "/bookings/:bookingId",
+  authMiddleware,
+  authRoleMiddleware(["landlord"]),
+  async (req, res) => {
+    try {
+      const { bookingId } = req.params;
+      const { status } = req.body;
 
-    const booking = await Booking.findById(bookingId).populate("room");
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
+      if (!["Approved", "Rejected"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const booking = await Booking.findById(bookingId).populate("room");
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+      if (booking.room.owner.toString() !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      booking.status = status;
+      await booking.save();
+
+      res.json({ message: `Booking ${status.toLowerCase()}!`, booking });
+    } catch (err) {
+      console.error("Update booking error:", err);
+      res.status(500).json({ message: "Server error", error: err.message });
     }
-
-    const room = booking.room;
-
-    // Ensure the room belongs to the landlord
-    if (room.owner.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Unauthorized: Not your room" });
-    }
-
-    // Prevent confirming if already confirmed
-    if (booking.status === "Confirmed") {
-      return res.status(400).json({ message: "Booking is already confirmed" });
-    }
-
-    // Set all other bookings for the same room to Rejected
-    await Booking.updateMany(
-      {
-        room: room._id,
-        _id: { $ne: booking._id },
-        status: "Applied"
-      },
-      { $set: { status: "Rejected" } }
-    );
-
-    // Confirm this booking
-    booking.status = "Confirmed";
-    await booking.save();
-
-    // Mark room unavailable
-    room.isAvailable = false;
-    await room.save();
-
-    res.json({ message: "Booking confirmed!", booking });
-  } catch (error) {
-    console.error("Confirm booking error:", error);
-    res.status(500).json({ message: "Error confirming booking", error });
   }
-});
+);
 
 module.exports = router;

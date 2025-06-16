@@ -13,7 +13,7 @@ const bookingSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["Applied", "Confirmed", "Rejected"],
+    enum: ["Applied", "Approved", "Paid", "Rejected"],
     default: "Applied"
   }
 }, {

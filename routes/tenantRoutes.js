@@ -1,8 +1,11 @@
 const express = require("express");
+const axios = require("axios");
 const authMiddleware = require("../middleware/authMiddleware");
 const authRoleMiddleware = require("../middleware/authRoleMiddleware");
 const Room = require("../models/roomModel");
 const Booking = require("../models/bookingModel");
+
+require("dotenv").config();
 
 const router = express.Router();
 
@@ -107,4 +110,72 @@ router.post("/apply-booking/:roomId", authMiddleware, authRoleMiddleware(["tenan
     res.status(500).json({ message: "Error applying for booking", error });
   }
 });
+
+router.patch(
+  "/bookings/:bookingId/pay",
+  authMiddleware,
+  authRoleMiddleware(["tenant"]),
+  async (req, res) => {
+    try {
+      const { bookingId } = req.params;
+      const { token } = req.body;
+      
+
+      const booking = await Booking.findById(bookingId).populate("room");
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+      if (booking.tenant.toString() !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      if (booking.status !== "Approved") {
+        return res.status(400).json({ message: "Booking is not approved" });
+      }
+
+      const expectedAmount = booking.room.price * 100;
+
+      const response = await axios.post(
+        "https://khalti.com/api/v2/payment/verify/",
+        {
+          token,
+          amount: expectedAmount,
+        },
+        {
+          headers: {
+            Authorization: `Key ${process.env.KHALTI_SECRET_KEY}`,
+          },
+        }
+      );
+
+      if (response.data && response.data.idx) {
+        booking.status = "Paid";
+        await booking.save();
+
+        booking.room.isAvailable = false;
+        await booking.room.save();
+
+        await Booking.updateMany(
+          {
+            room: booking.room._id,
+            _id: { $ne: booking._id },
+            status: "Applied",
+          },
+          { $set: { status: "Rejected" } }
+        );
+
+        return res.json({
+          message: "Payment verified and booking marked as Paid",
+          booking,
+        });
+      } else {
+        return res.status(400).json({ message: "Khalti verification failed" });
+      }
+    } catch (err) {
+      console.error("Khalti verify error:", err.response?.data || err.message);
+      return res
+        .status(500)
+        .json({ message: "Payment verification failed", error: err.message });
+    }
+  }
+);
 module.exports = router;
